@@ -7,83 +7,171 @@
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     html, body {
-      width: 100%;
-      height: 100%;
+      width: 100%; height: 100%;
       overflow: hidden;
       background: #0a0a1a;
-      display: flex;
-      align-items: center;
-      justify-content: center;
+      display: flex; align-items: center; justify-content: center;
     }
-    canvas {
-      display: block;
-      touch-action: none;
-    }
+    canvas { display: block; touch-action: none; }
   </style>
 </head>
 <body>
-  <script src="https://cdn.jsdelivr.net/npm/pixi.js@7.4.2/dist/pixi.min.js"></script>
-  <script>
-    // ─── CONFIG ────────────────────────────────────────────────────────────────
-    const DESIGN_W = 390;
-    const DESIGN_H = 844;
+<script src="https://cdn.jsdelivr.net/npm/pixi.js@7.4.2/dist/pixi.min.js"></script>
+<script>
+// ═══════════════════════════════════════════════════════════════════════════════
+//  CONFIG
+// ═══════════════════════════════════════════════════════════════════════════════
+const DESIGN_W  = 390;
+const DESIGN_H  = 844;
+const GROUND_Y  = DESIGN_H * 0.78;   // 658px — ground line
+const CTA_H     = DESIGN_H * 0.10;   // 84px  — CTA bar at bottom
 
-    // ─── APP INIT ──────────────────────────────────────────────────────────────
-    const app = new PIXI.Application({
-      width: DESIGN_W,
-      height: DESIGN_H,
-      backgroundColor: 0x0d0d2b,
-      antialias: false,
-      resolution: window.devicePixelRatio || 1,
-      autoDensity: true,
-    });
-    document.body.appendChild(app.view);
+const SCROLL_SPEED = 3;  // px per frame (base)
 
-    // ─── RESPONSIVE SCALING ────────────────────────────────────────────────────
-    function resize() {
-      const screenW = window.innerWidth;
-      const screenH = window.innerHeight;
-      const scale = Math.min(screenW / DESIGN_W, screenH / DESIGN_H);
-      app.view.style.width  = Math.floor(DESIGN_W * scale) + 'px';
-      app.view.style.height = Math.floor(DESIGN_H * scale) + 'px';
+// Spritesheet grids
+const CHAR_COLS = 5, CHAR_ROWS = 4;
+const CHAR_W = 930 / CHAR_COLS;   // 186
+const CHAR_H = 860 / CHAR_ROWS;   // 215
+
+const ENEMY_COLS = 5, ENEMY_ROWS = 4;
+const ENEMY_W = 1200 / ENEMY_COLS;  // 240
+const ENEMY_H = 960  / ENEMY_ROWS;  // 192
+
+const COIN_FRAMES = 6;
+const COIN_FRAME_W = 384 / COIN_FRAMES;  // 64
+const COIN_FRAME_H = 209;
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//  APP
+// ═══════════════════════════════════════════════════════════════════════════════
+const app = new PIXI.Application({
+  width: DESIGN_W, height: DESIGN_H,
+  backgroundColor: 0x0d0d2b,
+  antialias: false,
+  resolution: window.devicePixelRatio || 1,
+  autoDensity: true,
+});
+document.body.appendChild(app.view);
+
+function resize() {
+  const s = Math.min(window.innerWidth / DESIGN_W, window.innerHeight / DESIGN_H);
+  app.view.style.width  = Math.floor(DESIGN_W * s) + 'px';
+  app.view.style.height = Math.floor(DESIGN_H * s) + 'px';
+}
+window.addEventListener('resize', resize);
+resize();
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//  PARALLAX BACKGROUND
+// ═══════════════════════════════════════════════════════════════════════════════
+class ParallaxBackground {
+  constructor(stage) {
+    this.container = new PIXI.Container();
+    stage.addChild(this.container);
+
+    // BG image is 1707x704 — scale so height fills from top to ground
+    const bgTex = PIXI.Texture.from('assets/bg.webp');
+    const bgScale = (GROUND_Y + 20) / 704;  // fit height to ground
+    const bgW = Math.ceil(1707 * bgScale);   // scaled tile width
+
+    // Two tiles for seamless loop
+    this.bgTiles = [];
+    for (let i = 0; i < 2; i++) {
+      const s = new PIXI.Sprite(bgTex);
+      s.scale.set(bgScale);
+      s.x = i * bgW;
+      s.y = 0;
+      this.container.addChild(s);
+      this.bgTiles.push(s);
     }
-    window.addEventListener('resize', resize);
-    resize();
+    this.bgW = bgW;
 
-    // ─── PLACEHOLDER STAGE ─────────────────────────────────────────────────────
-    const bg = new PIXI.Graphics();
-    bg.beginFill(0x0d0d2b);
-    bg.drawRect(0, 0, DESIGN_W, DESIGN_H);
-    bg.endFill();
-    app.stage.addChild(bg);
+    // Mid props — neon billboard (prop1)
+    const prop1Tex = PIXI.Texture.from('assets/prop1.webp');
+    this.billboards = this._createPropLayer(prop1Tex, 120, 60, 3, 280, 350);
 
-    // Grid lines for visual feedback
-    const grid = new PIXI.Graphics();
-    grid.lineStyle(1, 0xa259ff, 0.15);
-    for (let x = 0; x <= DESIGN_W; x += 50) { grid.moveTo(x, 0); grid.lineTo(x, DESIGN_H); }
-    for (let y = 0; y <= DESIGN_H; y += 50) { grid.moveTo(0, y); grid.lineTo(DESIGN_W, y); }
-    app.stage.addChild(grid);
+    // Foreground props — street lamp (prop2)
+    const prop2Tex = PIXI.Texture.from('assets/prop2.webp');
+    this.lamps = this._createPropLayer(prop2Tex, 30, 80, 4, 170, 250);
 
-    // Ground line
-    const GROUND_Y = DESIGN_H * 0.78;
-    const ground = new PIXI.Graphics();
-    ground.lineStyle(3, 0x00ffff, 0.8);
-    ground.moveTo(0, GROUND_Y);
-    ground.lineTo(DESIGN_W, GROUND_Y);
-    app.stage.addChild(ground);
+    // Glowing ground road
+    this._buildGround();
+  }
 
-    // Label
-    const style = new PIXI.TextStyle({ fill: '#a259ff', fontFamily: 'monospace', fontSize: 18 });
-    const label = new PIXI.Text('PLAYBOX RUNNER\nPixiJS v7 ✓', style);
-    label.anchor.set(0.5);
-    label.x = DESIGN_W / 2;
-    label.y = DESIGN_H / 2;
-    app.stage.addChild(label);
+  _createPropLayer(tex, baseH, variance, count, xStart, xGap) {
+    const props = [];
+    for (let i = 0; i < count; i++) {
+      const s = new PIXI.Sprite(tex);
+      const h = baseH + Math.random() * variance;
+      const scale = h / tex.height;
+      s.scale.set(scale);
+      s.anchor.set(0.5, 1);
+      s.x = xStart + i * (xGap + Math.random() * 80);
+      s.y = GROUND_Y;
+      this.container.addChild(s);
+      props.push({ sprite: s, baseX: s.x });
+    }
+    return props;
+  }
 
-    // Pulse animation
-    app.ticker.add((delta) => {
-      label.alpha = 0.6 + 0.4 * Math.sin(Date.now() / 500);
-    });
-  </script>
+  _buildGround() {
+    const g = new PIXI.Graphics();
+    // Road surface gradient effect via overlapping rects
+    g.beginFill(0x0a0a1a);
+    g.drawRect(0, GROUND_Y, DESIGN_W, DESIGN_H - GROUND_Y - CTA_H);
+    g.endFill();
+
+    // Neon ground line
+    g.lineStyle(3, 0x00ffff, 1.0);
+    g.moveTo(0, GROUND_Y);
+    g.lineTo(DESIGN_W, GROUND_Y);
+
+    // Secondary glow line
+    g.lineStyle(8, 0x00ffff, 0.15);
+    g.moveTo(0, GROUND_Y);
+    g.lineTo(DESIGN_W, GROUND_Y);
+
+    this.container.addChild(g);
+  }
+
+  update(delta, scrollSpeed) {
+    // Background — slowest (0.2x)
+    for (const tile of this.bgTiles) {
+      tile.x -= scrollSpeed * 0.2 * delta;
+    }
+    // Wrap background tiles
+    const ref = this.bgTiles[0];
+    if (ref.x + this.bgW <= 0) {
+      this.bgTiles[0].x = this.bgTiles[1].x + this.bgW;
+      this.bgTiles.push(this.bgTiles.shift());
+    }
+
+    // Billboards — mid speed (0.5x)
+    for (const p of this.billboards) {
+      p.sprite.x -= scrollSpeed * 0.5 * delta;
+      if (p.sprite.x + p.sprite.width < 0) {
+        p.sprite.x = DESIGN_W + p.sprite.width / 2 + Math.random() * 200;
+      }
+    }
+
+    // Lamps — faster (0.7x)
+    for (const p of this.lamps) {
+      p.sprite.x -= scrollSpeed * 0.7 * delta;
+      if (p.sprite.x + p.sprite.width < 0) {
+        p.sprite.x = DESIGN_W + p.sprite.width / 2 + Math.random() * 150;
+      }
+    }
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//  INIT (temporary — full game in next commits)
+// ═══════════════════════════════════════════════════════════════════════════════
+const bg = new ParallaxBackground(app.stage);
+
+app.ticker.add((delta) => {
+  bg.update(delta, SCROLL_SPEED);
+});
+</script>
 </body>
 </html>
