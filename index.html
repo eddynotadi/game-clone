@@ -517,31 +517,292 @@ function aabbOverlap(a, b) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
+//  HUD
+// ═══════════════════════════════════════════════════════════════════════════════
+class HUD {
+  constructor(stage) {
+    this.container = new PIXI.Container();
+    stage.addChild(this.container);
+
+    const heartTex = PIXI.Texture.from('assets/heart.webp');
+
+    // Hearts (top-left)
+    this.heartSprites = [];
+    for (let i = 0; i < 3; i++) {
+      const h = new PIXI.Sprite(heartTex);
+      h.scale.set(22 / heartTex.height);
+      h.x = 12 + i * 28;
+      h.y = 12;
+      this.container.addChild(h);
+      this.heartSprites.push(h);
+    }
+
+    // Score bg + text (top-right)
+    this.scoreBg = new PIXI.Graphics();
+    this.scoreBg.beginFill(0xffffff, 0.15);
+    this.scoreBg.lineStyle(1, 0x00ffff, 0.6);
+    this.scoreBg.drawRoundedRect(0, 0, 110, 30, 8);
+    this.scoreBg.endFill();
+    this.scoreBg.x = DESIGN_W - 122;
+    this.scoreBg.y = 10;
+    this.container.addChild(this.scoreBg);
+
+    this.scoreText = new PIXI.Text('$ 0', {
+      fill: '#ffffff', fontFamily: 'monospace',
+      fontSize: 15, fontWeight: 'bold',
+    });
+    this.scoreText.anchor.set(0.5, 0.5);
+    this.scoreText.x = DESIGN_W - 122 + 55;
+    this.scoreText.y = 25;
+    this.container.addChild(this.scoreText);
+
+    // CTA bar (bottom)
+    this._buildCTA(stage);
+
+    // Tutorial hand (bouncing pointer)
+    this._buildTutorial(stage);
+  }
+
+  _buildCTA(stage) {
+    this.ctaBar = new PIXI.Container();
+    const barY = DESIGN_H - CTA_H;
+
+    const bg = new PIXI.Graphics();
+    bg.beginFill(0x6200ea);
+    bg.drawRect(0, barY, DESIGN_W, CTA_H);
+    bg.endFill();
+    this.ctaBar.addChild(bg);
+
+    const label = new PIXI.Text('Playoff', {
+      fill: '#ffffff', fontFamily: 'sans-serif',
+      fontSize: 16, fontWeight: 'bold',
+    });
+    label.x = 16; label.y = barY + (CTA_H - label.height) / 2;
+    this.ctaBar.addChild(label);
+
+    // Download button
+    const btn = new PIXI.Graphics();
+    btn.beginFill(0x00e5ff);
+    btn.drawRoundedRect(0, 0, 100, 34, 8);
+    btn.endFill();
+    btn.x = DESIGN_W - 112;
+    btn.y = barY + (CTA_H - 34) / 2;
+    btn.interactive = true;
+    btn.cursor = 'pointer';
+    btn.on('pointerdown', () => {
+      window.open('https://playoff.app', '_blank');
+    });
+    this.ctaBar.addChild(btn);
+
+    const btnLabel = new PIXI.Text('DOWNLOAD', {
+      fill: '#000000', fontFamily: 'sans-serif',
+      fontSize: 12, fontWeight: 'bold',
+    });
+    btnLabel.anchor.set(0.5, 0.5);
+    btnLabel.x = btn.x + 50; btnLabel.y = btn.y + 17;
+    this.ctaBar.addChild(btnLabel);
+
+    stage.addChild(this.ctaBar);
+  }
+
+  _buildTutorial(stage) {
+    this.tutorialContainer = new PIXI.Container();
+    this.tutorialVisible = true;
+    this.tutorialTimer = 0;
+
+    // Hand icon (drawn)
+    const hand = new PIXI.Graphics();
+    hand.beginFill(0xffffff, 0.9);
+    hand.drawRoundedRect(-15, 0, 30, 40, 6);
+    hand.beginFill(0xcccccc, 0.9);
+    hand.drawCircle(0, -8, 12);
+    hand.endFill();
+    hand.x = DESIGN_W / 2;
+    hand.y = GROUND_Y - 80;
+    this.tutorialHand = hand;
+    this.tutorialContainer.addChild(hand);
+
+    const tapText = new PIXI.Text('TAP TO JUMP!', {
+      fill: '#00ffff', fontFamily: 'monospace',
+      fontSize: 14, fontWeight: 'bold',
+    });
+    tapText.anchor.set(0.5, 0);
+    tapText.x = DESIGN_W / 2;
+    tapText.y = GROUND_Y - 120;
+    this.tutorialContainer.addChild(tapText);
+
+    stage.addChild(this.tutorialContainer);
+  }
+
+  hideTutorial() {
+    this.tutorialVisible = false;
+    this.tutorialContainer.visible = false;
+  }
+
+  update(lives, score) {
+    // Update hearts
+    for (let i = 0; i < 3; i++) {
+      this.heartSprites[i].alpha = i < lives ? 1 : 0.2;
+    }
+    this.scoreText.text = `$ ${score}`;
+
+    // Tutorial bounce
+    if (this.tutorialVisible) {
+      this.tutorialTimer += 0.05;
+      this.tutorialHand.y = GROUND_Y - 80 + Math.sin(this.tutorialTimer * 3) * 8;
+    }
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//  GAME OVER SCREEN
+// ═══════════════════════════════════════════════════════════════════════════════
+class GameOverScreen {
+  constructor(stage) {
+    this.container = new PIXI.Container();
+    this.container.visible = false;
+    stage.addChild(this.container);
+
+    // Dark overlay
+    const overlay = new PIXI.Graphics();
+    overlay.beginFill(0x000000, 0.65);
+    overlay.drawRect(0, 0, DESIGN_W, DESIGN_H - CTA_H);
+    overlay.endFill();
+    this.container.addChild(overlay);
+
+    // FAIL badge (drawn since we don't have the original)
+    const badge = new PIXI.Graphics();
+    badge.beginFill(0xcc0000);
+    badge.drawCircle(0, 0, 55);
+    badge.endFill();
+    badge.lineStyle(4, 0xff4444);
+    badge.drawCircle(0, 0, 55);
+    badge.x = DESIGN_W / 2;
+    badge.y = DESIGN_H * 0.38;
+    this.container.addChild(badge);
+
+    const failText = new PIXI.Text('FAIL', {
+      fill: '#ffffff', fontFamily: 'monospace',
+      fontSize: 28, fontWeight: 'bold',
+    });
+    failText.anchor.set(0.5);
+    failText.x = DESIGN_W / 2;
+    failText.y = DESIGN_H * 0.38;
+    this.container.addChild(failText);
+
+    // Score display
+    this.finalScore = new PIXI.Text('', {
+      fill: '#FFD700', fontFamily: 'monospace',
+      fontSize: 22, fontWeight: 'bold',
+    });
+    this.finalScore.anchor.set(0.5);
+    this.finalScore.x = DESIGN_W / 2;
+    this.finalScore.y = DESIGN_H * 0.52;
+    this.container.addChild(this.finalScore);
+
+    // Tap to retry
+    const retry = new PIXI.Text('TAP TO TRY AGAIN', {
+      fill: '#ffffff', fontFamily: 'monospace', fontSize: 16,
+    });
+    retry.anchor.set(0.5);
+    retry.x = DESIGN_W / 2;
+    retry.y = DESIGN_H * 0.62;
+    this.container.addChild(retry);
+
+    // Blink retry text
+    this._blinkTimer = 0;
+    this._retryText  = retry;
+
+    // Badge drop animation
+    this._badge      = badge;
+    this._dropTimer  = 0;
+    this._badgeTargY = badge.y;
+    badge.y          = -60;
+  }
+
+  show(score) {
+    this.container.visible = true;
+    this.finalScore.text   = `Score: $ ${score}`;
+    this._dropTimer = 0;
+    this._badge.y   = -60;
+  }
+
+  hide() { this.container.visible = false; }
+
+  update(delta) {
+    if (!this.container.visible) return;
+
+    // Drop badge in
+    if (this._badge.y < this._badgeTargY) {
+      this._badge.y += 12 * delta;
+      if (this._badge.y > this._badgeTargY) this._badge.y = this._badgeTargY;
+    }
+
+    // Blink retry text
+    this._blinkTimer += delta;
+    this._retryText.visible = Math.floor(this._blinkTimer / 30) % 2 === 0;
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
 //  GAME STATE
 // ═══════════════════════════════════════════════════════════════════════════════
 let lives  = 3;
 let score  = 0;
 let gameRunning = true;
+let tutorialDone = false;
 
 // ═══════════════════════════════════════════════════════════════════════════════
 //  INIT
 // ═══════════════════════════════════════════════════════════════════════════════
-const bg      = new ParallaxBackground(app.stage);
-const player  = new Player(app.stage);
-const enemies = new EnemyManager(app.stage);
-const coinMgr = new CoinManager(app.stage);
+const bg       = new ParallaxBackground(app.stage);
+const player   = new Player(app.stage);
+const enemies  = new EnemyManager(app.stage);
+const coinMgr  = new CoinManager(app.stage);
+const hud      = new HUD(app.stage);
+const gameOver = new GameOverScreen(app.stage);
 
 let scrollSpeed   = SCROLL_SPEED;
 let spawnInterval = 180;
 let elapsed       = 0;
 
+function resetGame() {
+  lives         = 3;
+  score         = 0;
+  scrollSpeed   = SCROLL_SPEED;
+  spawnInterval = 180;
+  elapsed       = 0;
+  gameRunning   = true;
+  tutorialDone  = false;
+  enemies.reset();
+  coinMgr.reset();
+  player.hurtTimer = 0;
+  player.sprite.visible = true;
+  player.sprite.y = GROUND_Y;
+  player.vy = 0;
+  player.onGround = true;
+  player._setState(STATE.RUNNING);
+  hud.tutorialContainer.visible = true;
+  hud.tutorialVisible = true;
+  gameOver.hide();
+}
+
 function onTap() {
-  if (!gameRunning) return;
+  if (!gameRunning) {
+    resetGame();
+    return;
+  }
+  if (!tutorialDone) {
+    tutorialDone = true;
+    hud.hideTutorial();
+  }
   player.jump();
 }
 app.view.addEventListener('pointerdown', onTap);
 
 app.ticker.add((delta) => {
+  gameOver.update(delta);
+
   if (!gameRunning) return;
 
   elapsed += delta;
@@ -556,6 +817,7 @@ app.ticker.add((delta) => {
   player.update(delta);
   enemies.update(delta, scrollSpeed, spawnInterval);
   coinMgr.update(delta, scrollSpeed);
+  hud.update(lives, score);
 
   // Coin collection
   const px = player.sprite.x;
@@ -571,7 +833,7 @@ app.ticker.add((delta) => {
         lives--;
         if (lives <= 0) {
           gameRunning = false;
-          // Game over handled in next commit
+          gameOver.show(score);
         }
       }
     }
