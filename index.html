@@ -380,21 +380,170 @@ class EnemyManager {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
+//  COIN MANAGER
+// ═══════════════════════════════════════════════════════════════════════════════
+class CoinManager {
+  constructor(stage) {
+    this.stage   = stage;
+    this.coins   = [];
+    this.particles = [];
+    this.spawnTimer = 0;
+    this.spawnInterval = 120; // frames
+
+    const base = PIXI.BaseTexture.from('assets/coins.webp');
+    this.coinFrames = [];
+    for (let i = 0; i < COIN_FRAMES; i++) {
+      this.coinFrames.push(new PIXI.Texture(base,
+        new PIXI.Rectangle(i * COIN_FRAME_W, 0, COIN_FRAME_W, COIN_FRAME_H)));
+    }
+  }
+
+  _spawnCoin(x, y) {
+    const s = new PIXI.AnimatedSprite(this.coinFrames);
+    s.animationSpeed = 0.2;
+    s.play();
+    const scale = 28 / COIN_FRAME_H;
+    s.scale.set(scale);
+    s.anchor.set(0.5, 0.5);
+    s.x = x;
+    s.y = y;
+    this.stage.addChild(s);
+    this.coins.push({ sprite: s, radius: 18 });
+  }
+
+  _spawnPattern(scrollSpeed) {
+    const type = Math.floor(Math.random() * 3);
+    const baseX = DESIGN_W + 30;
+
+    if (type === 0) {
+      // Single coin on ground level
+      this._spawnCoin(baseX, GROUND_Y - 30);
+    } else if (type === 1) {
+      // Arc (jump trajectory) — 5 coins
+      for (let i = 0; i < 5; i++) {
+        const t  = i / 4;
+        const cx = baseX + i * 40;
+        const cy = GROUND_Y - 30 - Math.sin(t * Math.PI) * 120;
+        setTimeout(() => this._spawnCoin(cx, cy), 0);
+      }
+    } else {
+      // Ground row — 3 coins
+      for (let i = 0; i < 3; i++) {
+        this._spawnCoin(baseX + i * 35, GROUND_Y - 30);
+      }
+    }
+  }
+
+  _emitParticles(x, y) {
+    for (let i = 0; i < 6; i++) {
+      const g = new PIXI.Graphics();
+      g.beginFill(0xFFD700);
+      g.drawCircle(0, 0, 3);
+      g.endFill();
+      g.x = x;
+      g.y = y;
+      const angle = (Math.PI * 2 * i) / 6;
+      this.stage.addChild(g);
+      this.particles.push({ g, vx: Math.cos(angle) * 3, vy: Math.sin(angle) * 3 - 2, life: 30 });
+    }
+  }
+
+  update(delta, scrollSpeed) {
+    this.spawnTimer += delta;
+    if (this.spawnTimer >= this.spawnInterval) {
+      this.spawnTimer = 0;
+      this._spawnPattern(scrollSpeed);
+    }
+
+    // Move coins
+    for (const c of this.coins) {
+      c.sprite.x -= scrollSpeed * delta;
+    }
+
+    // Move particles
+    for (const p of this.particles) {
+      p.g.x += p.vx * delta;
+      p.g.y += p.vy * delta;
+      p.vy  += 0.2 * delta;
+      p.life -= delta;
+      p.g.alpha = p.life / 30;
+    }
+
+    // Cleanup off-screen coins
+    this.coins = this.coins.filter(c => {
+      if (c.sprite.x < -30) {
+        this.stage.removeChild(c.sprite);
+        c.sprite.destroy();
+        return false;
+      }
+      return true;
+    });
+
+    // Cleanup dead particles
+    this.particles = this.particles.filter(p => {
+      if (p.life <= 0) { this.stage.removeChild(p.g); p.g.destroy(); return false; }
+      return true;
+    });
+  }
+
+  checkCollect(px, py, radius = 30) {
+    const collected = [];
+    this.coins = this.coins.filter(c => {
+      const dx = c.sprite.x - px;
+      const dy = c.sprite.y - py;
+      if (Math.sqrt(dx * dx + dy * dy) < radius + c.radius) {
+        this._emitParticles(c.sprite.x, c.sprite.y);
+        this.stage.removeChild(c.sprite);
+        c.sprite.destroy();
+        collected.push(c);
+        return false;
+      }
+      return true;
+    });
+    return collected.length;
+  }
+
+  reset() {
+    for (const c of this.coins) { this.stage.removeChild(c.sprite); c.sprite.destroy(); }
+    for (const p of this.particles) { this.stage.removeChild(p.g); p.g.destroy(); }
+    this.coins = []; this.particles = []; this.spawnTimer = 0;
+  }
+}
+
+// ─── AABB Collision ──────────────────────────────────────────────────────────
+function aabbOverlap(a, b) {
+  return a.x < b.x + b.w && a.x + a.w > b.x &&
+         a.y < b.y + b.h && a.y + a.h > b.y;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//  GAME STATE
+// ═══════════════════════════════════════════════════════════════════════════════
+let lives  = 3;
+let score  = 0;
+let gameRunning = true;
+
+// ═══════════════════════════════════════════════════════════════════════════════
 //  INIT
 // ═══════════════════════════════════════════════════════════════════════════════
 const bg      = new ParallaxBackground(app.stage);
 const player  = new Player(app.stage);
 const enemies = new EnemyManager(app.stage);
+const coinMgr = new CoinManager(app.stage);
 
-let scrollSpeed    = SCROLL_SPEED;
-let spawnInterval  = 180;
-let elapsed        = 0;
+let scrollSpeed   = SCROLL_SPEED;
+let spawnInterval = 180;
+let elapsed       = 0;
 
-// Input — tap or click to jump
-function onTap() { player.jump(); }
+function onTap() {
+  if (!gameRunning) return;
+  player.jump();
+}
 app.view.addEventListener('pointerdown', onTap);
 
 app.ticker.add((delta) => {
+  if (!gameRunning) return;
+
   elapsed += delta;
 
   // Difficulty ramp every 10s (600 frames)
@@ -406,6 +555,27 @@ app.ticker.add((delta) => {
   bg.update(delta, scrollSpeed);
   player.update(delta);
   enemies.update(delta, scrollSpeed, spawnInterval);
+  coinMgr.update(delta, scrollSpeed);
+
+  // Coin collection
+  const px = player.sprite.x;
+  const py = player.sprite.y - player.hitH / 2;
+  const collected = coinMgr.checkCollect(px, py, 30);
+  score += collected * 5;
+
+  // Enemy collision
+  const playerBox = player.hitBox;
+  for (const box of enemies.getHitBoxes()) {
+    if (aabbOverlap(playerBox, box)) {
+      if (player.hurt()) {
+        lives--;
+        if (lives <= 0) {
+          gameRunning = false;
+          // Game over handled in next commit
+        }
+      }
+    }
+  }
 });
 </script>
 </body>
