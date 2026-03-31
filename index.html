@@ -1860,6 +1860,57 @@ let score  = 0;
 let gameRunning = true;
 let tutorialDone = false;
 
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//  SOUND (Web Audio API — no external files needed)
+// ═══════════════════════════════════════════════════════════════════════════════
+const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+function playTone(freq, type, duration, vol = 0.3, fadeOut = true) {
+  try {
+    const osc  = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.type      = type;
+    osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+    gain.gain.setValueAtTime(vol, audioCtx.currentTime);
+    if (fadeOut) gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
+    osc.start();
+    osc.stop(audioCtx.currentTime + duration);
+  } catch(e) {}
+}
+
+const SFX = {
+  jump:    () => { playTone(520, 'square', 0.12, 0.2); playTone(720, 'square', 0.08, 0.1); },
+  coin:    () => { playTone(880, 'sine', 0.15, 0.25); playTone(1100, 'sine', 0.1, 0.1); },
+  hurt:    () => { playTone(180, 'sawtooth', 0.3, 0.4); },
+  gameover:() => { playTone(220, 'sawtooth', 0.2, 0.5); setTimeout(() => playTone(150, 'sawtooth', 0.4, 0.5), 200); },
+  land:    () => { playTone(120, 'sine', 0.08, 0.15); },
+};
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//  SCREEN SHAKE
+// ═══════════════════════════════════════════════════════════════════════════════
+let shakeTimer = 0;
+let shakeMag   = 0;
+
+function triggerShake(mag = 8, dur = 15) {
+  shakeMag   = mag;
+  shakeTimer = dur;
+}
+
+function updateShake(delta) {
+  if (shakeTimer <= 0) {
+    app.stage.x = 0; app.stage.y = 0;
+    return;
+  }
+  shakeTimer -= delta;
+  const s = shakeMag * (shakeTimer / 15);
+  app.stage.x = (Math.random() - 0.5) * s;
+  app.stage.y = (Math.random() - 0.5) * s * 0.5;
+}
+
 // ═══════════════════════════════════════════════════════════════════════════════
 //  INIT
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -1875,6 +1926,7 @@ let spawnInterval = 180;
 let elapsed       = 0;
 
 function resetGame() {
+  audioCtx.resume();
   lives         = 3;
   score         = 0;
   scrollSpeed   = SCROLL_SPEED;
@@ -1896,6 +1948,7 @@ function resetGame() {
 }
 
 function onTap() {
+  audioCtx.resume();
   if (!gameRunning) {
     resetGame();
     return;
@@ -1904,12 +1957,14 @@ function onTap() {
     tutorialDone = true;
     hud.hideTutorial();
   }
+  SFX.jump();
   player.jump();
 }
 app.view.addEventListener('pointerdown', onTap);
 
 app.ticker.add((delta) => {
   gameOver.update(delta);
+  updateShake(delta);
 
   if (!gameRunning) return;
 
@@ -1931,6 +1986,7 @@ app.ticker.add((delta) => {
   const px = player.sprite.x;
   const py = player.sprite.y - player.hitH / 2;
   const collected = coinMgr.checkCollect(px, py, 30);
+  if (collected > 0) SFX.coin();
   score += collected * 5;
 
   // Enemy collision
@@ -1938,9 +1994,12 @@ app.ticker.add((delta) => {
   for (const box of enemies.getHitBoxes()) {
     if (aabbOverlap(playerBox, box)) {
       if (player.hurt()) {
+        SFX.hurt();
+        triggerShake();
         lives--;
         if (lives <= 0) {
           gameRunning = false;
+          SFX.gameover();
           gameOver.show(score);
         }
       }
