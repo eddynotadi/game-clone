@@ -281,18 +281,131 @@ class Player {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
+//  ENEMY MANAGER
+// ═══════════════════════════════════════════════════════════════════════════════
+class EnemyManager {
+  constructor(stage) {
+    this.stage    = stage;
+    this.enemies  = [];
+    this.spawnTimer    = 0;
+    this.spawnInterval = 180; // frames (~3s at 60fps)
+
+    // Robot spritesheet
+    const base = PIXI.BaseTexture.from('assets/enemy.webp');
+    this.robotFrames = [];
+    for (let c = 0; c < ENEMY_COLS; c++) {
+      this.robotFrames.push(new PIXI.Texture(base,
+        new PIXI.Rectangle(c * ENEMY_W, 0, ENEMY_W, ENEMY_H)));
+    }
+
+    // Laser barrier texture
+    this.laserTex = PIXI.Texture.from('assets/obstacle.webp');
+  }
+
+  _spawnRobot(scrollSpeed) {
+    const sprite = new PIXI.AnimatedSprite(this.robotFrames);
+    sprite.animationSpeed = 0.18;
+    sprite.play();
+    const scale = 70 / ENEMY_H;
+    sprite.scale.set(scale);
+    sprite.anchor.set(0.5, 1);
+    sprite.x = DESIGN_W + 60;
+    sprite.y = GROUND_Y;
+    this.stage.addChild(sprite);
+    return { sprite, type: 'robot', speed: scrollSpeed * 1.2,
+             w: ENEMY_W * scale * 0.6, h: 70 * 0.9 };
+  }
+
+  _spawnLaser(scrollSpeed) {
+    const sprite = new PIXI.Sprite(this.laserTex);
+    const targetH = 90;
+    const scale = targetH / this.laserTex.height;
+    sprite.scale.set(scale);
+    sprite.anchor.set(0.5, 1);
+    sprite.x = DESIGN_W + 40;
+    sprite.y = GROUND_Y;
+    this.stage.addChild(sprite);
+    return { sprite, type: 'laser', speed: scrollSpeed,
+             w: this.laserTex.width * scale * 0.5, h: targetH * 0.85 };
+  }
+
+  spawn(scrollSpeed) {
+    const type = Math.random() < 0.6 ? 'robot' : 'laser';
+    const enemy = type === 'robot'
+      ? this._spawnRobot(scrollSpeed)
+      : this._spawnLaser(scrollSpeed);
+    this.enemies.push(enemy);
+  }
+
+  getHitBoxes() {
+    return this.enemies.map(e => ({
+      x: e.sprite.x - e.w / 2,
+      y: e.sprite.y - e.h,
+      w: e.w, h: e.h,
+      ref: e,
+    }));
+  }
+
+  update(delta, scrollSpeed, newInterval) {
+    this.spawnInterval = newInterval;
+    this.spawnTimer += delta;
+    if (this.spawnTimer >= this.spawnInterval) {
+      this.spawnTimer = 0;
+      this.spawn(scrollSpeed);
+    }
+
+    for (const e of this.enemies) {
+      e.sprite.x -= e.speed * delta;
+    }
+
+    // Remove off-screen enemies
+    this.enemies = this.enemies.filter(e => {
+      if (e.sprite.x < -100) {
+        this.stage.removeChild(e.sprite);
+        e.sprite.destroy();
+        return false;
+      }
+      return true;
+    });
+  }
+
+  reset() {
+    for (const e of this.enemies) {
+      this.stage.removeChild(e.sprite);
+      e.sprite.destroy();
+    }
+    this.enemies = [];
+    this.spawnTimer = 0;
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
 //  INIT
 // ═══════════════════════════════════════════════════════════════════════════════
-const bg     = new ParallaxBackground(app.stage);
-const player = new Player(app.stage);
+const bg      = new ParallaxBackground(app.stage);
+const player  = new Player(app.stage);
+const enemies = new EnemyManager(app.stage);
+
+let scrollSpeed    = SCROLL_SPEED;
+let spawnInterval  = 180;
+let elapsed        = 0;
 
 // Input — tap or click to jump
 function onTap() { player.jump(); }
 app.view.addEventListener('pointerdown', onTap);
 
 app.ticker.add((delta) => {
-  bg.update(delta, SCROLL_SPEED);
+  elapsed += delta;
+
+  // Difficulty ramp every 10s (600 frames)
+  if (elapsed % 600 < delta) {
+    scrollSpeed   = Math.min(scrollSpeed + 0.3, 6);
+    spawnInterval = Math.max(spawnInterval - 6, 60);
+  }
+
+  bg.update(delta, scrollSpeed);
   player.update(delta);
+  enemies.update(delta, scrollSpeed, spawnInterval);
 });
 </script>
 </body>
