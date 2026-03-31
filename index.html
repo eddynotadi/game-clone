@@ -165,12 +165,134 @@ class ParallaxBackground {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-//  INIT (temporary — full game in next commits)
+//  PLAYER
 // ═══════════════════════════════════════════════════════════════════════════════
-const bg = new ParallaxBackground(app.stage);
+const STATE = { IDLE: 0, RUNNING: 1, JUMPING: 2, HURT: 3 };
+
+class Player {
+  constructor(stage) {
+    this.state      = STATE.RUNNING;
+    this.vy         = 0;
+    this.onGround   = true;
+    this.hurtTimer  = 0;
+    this.blinkTimer = 0;
+
+    // Build frame textures from spritesheet
+    const base = PIXI.BaseTexture.from('assets/character.webp');
+    const makeFrames = (row, count) => {
+      const frames = [];
+      for (let c = 0; c < count; c++) {
+        frames.push(new PIXI.Texture(base,
+          new PIXI.Rectangle(c * CHAR_W, row * CHAR_H, CHAR_W, CHAR_H)));
+      }
+      return frames;
+    };
+
+    this.anims = {
+      [STATE.RUNNING]: makeFrames(0, 5),
+      [STATE.JUMPING]: makeFrames(1, 5),
+      [STATE.IDLE]:    makeFrames(2, 5),
+      [STATE.HURT]:    makeFrames(3, 5),
+    };
+
+    this.sprite = new PIXI.AnimatedSprite(this.anims[STATE.RUNNING]);
+    this.sprite.animationSpeed = 0.15;
+    this.sprite.play();
+
+    // Scale to good in-game size (~80px tall)
+    const scale = 80 / CHAR_H;
+    this.sprite.scale.set(scale);
+    this.sprite.anchor.set(0.5, 1);
+
+    // Position: 25% from left, standing on ground
+    this.sprite.x = DESIGN_W * 0.25;
+    this.sprite.y = GROUND_Y;
+
+    stage.addChild(this.sprite);
+
+    // Hitbox (used for collision) — 60% of visual
+    this.hitW = CHAR_W * scale * 0.6;
+    this.hitH = 80 * 0.9;
+  }
+
+  jump() {
+    if (!this.onGround || this.state === STATE.HURT) return;
+    this.vy = -14;
+    this.onGround = false;
+    this._setState(STATE.JUMPING);
+  }
+
+  hurt() {
+    if (this.hurtTimer > 0) return false; // still invincible
+    this.hurtTimer  = 90; // 1.5s at 60fps
+    this.blinkTimer = 0;
+    this._setState(STATE.HURT);
+    return true;
+  }
+
+  _setState(s) {
+    if (this.state === s) return;
+    this.state = s;
+    this.sprite.textures = this.anims[s];
+    this.sprite.gotoAndPlay(0);
+  }
+
+  get hitBox() {
+    return {
+      x: this.sprite.x - this.hitW / 2,
+      y: this.sprite.y - this.hitH,
+      w: this.hitW,
+      h: this.hitH,
+    };
+  }
+
+  update(delta) {
+    const GRAVITY = 0.6;
+
+    // Hurt invincibility + blink
+    if (this.hurtTimer > 0) {
+      this.hurtTimer -= delta;
+      this.blinkTimer += delta;
+      this.sprite.visible = Math.floor(this.blinkTimer / 4) % 2 === 0;
+      if (this.hurtTimer <= 0) {
+        this.sprite.visible = true;
+        if (this.onGround) this._setState(STATE.RUNNING);
+      }
+    }
+
+    // Physics
+    if (!this.onGround) {
+      this.vy += GRAVITY * delta;
+      this.sprite.y += this.vy * delta;
+
+      if (this.sprite.y >= GROUND_Y) {
+        this.sprite.y = GROUND_Y;
+        this.vy = 0;
+        this.onGround = true;
+        if (this.state !== STATE.HURT) this._setState(STATE.RUNNING);
+      }
+
+      // Switch to fall frames when descending
+      if (this.state === STATE.JUMPING && this.vy > 2) {
+        // stay on jump anim — or optionally flip to a land anim
+      }
+    }
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//  INIT
+// ═══════════════════════════════════════════════════════════════════════════════
+const bg     = new ParallaxBackground(app.stage);
+const player = new Player(app.stage);
+
+// Input — tap or click to jump
+function onTap() { player.jump(); }
+app.view.addEventListener('pointerdown', onTap);
 
 app.ticker.add((delta) => {
   bg.update(delta, SCROLL_SPEED);
+  player.update(delta);
 });
 </script>
 </body>
