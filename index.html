@@ -22,15 +22,68 @@
   </style>
 </head>
 <body>
-  <!-- Game canvas injected by PixiJS -->
+  <script src="https://cdn.jsdelivr.net/npm/pixi.js@7.4.2/dist/pixi.min.js"></script>
   <script>
-    // Playbox Runner — game bootstrap
-    // PixiJS and game logic will be added in subsequent commits
-    document.body.style.background = '#0d0d2b';
-    const placeholder = document.createElement('div');
-    placeholder.style.cssText = 'color:#a259ff;font-family:monospace;font-size:24px;text-align:center;';
-    placeholder.textContent = 'PLAYBOX RUNNER — LOADING...';
-    document.body.appendChild(placeholder);
+    // ─── CONFIG ────────────────────────────────────────────────────────────────
+    const DESIGN_W = 390;
+    const DESIGN_H = 844;
+
+    // ─── APP INIT ──────────────────────────────────────────────────────────────
+    const app = new PIXI.Application({
+      width: DESIGN_W,
+      height: DESIGN_H,
+      backgroundColor: 0x0d0d2b,
+      antialias: false,
+      resolution: window.devicePixelRatio || 1,
+      autoDensity: true,
+    });
+    document.body.appendChild(app.view);
+
+    // ─── RESPONSIVE SCALING ────────────────────────────────────────────────────
+    function resize() {
+      const screenW = window.innerWidth;
+      const screenH = window.innerHeight;
+      const scale = Math.min(screenW / DESIGN_W, screenH / DESIGN_H);
+      app.view.style.width  = Math.floor(DESIGN_W * scale) + 'px';
+      app.view.style.height = Math.floor(DESIGN_H * scale) + 'px';
+    }
+    window.addEventListener('resize', resize);
+    resize();
+
+    // ─── PLACEHOLDER STAGE ─────────────────────────────────────────────────────
+    const bg = new PIXI.Graphics();
+    bg.beginFill(0x0d0d2b);
+    bg.drawRect(0, 0, DESIGN_W, DESIGN_H);
+    bg.endFill();
+    app.stage.addChild(bg);
+
+    // Grid lines for visual feedback
+    const grid = new PIXI.Graphics();
+    grid.lineStyle(1, 0xa259ff, 0.15);
+    for (let x = 0; x <= DESIGN_W; x += 50) { grid.moveTo(x, 0); grid.lineTo(x, DESIGN_H); }
+    for (let y = 0; y <= DESIGN_H; y += 50) { grid.moveTo(0, y); grid.lineTo(DESIGN_W, y); }
+    app.stage.addChild(grid);
+
+    // Ground line
+    const GROUND_Y = DESIGN_H * 0.78;
+    const ground = new PIXI.Graphics();
+    ground.lineStyle(3, 0x00ffff, 0.8);
+    ground.moveTo(0, GROUND_Y);
+    ground.lineTo(DESIGN_W, GROUND_Y);
+    app.stage.addChild(ground);
+
+    // Label
+    const style = new PIXI.TextStyle({ fill: '#a259ff', fontFamily: 'monospace', fontSize: 18 });
+    const label = new PIXI.Text('PLAYBOX RUNNER\nPixiJS v7 ✓', style);
+    label.anchor.set(0.5);
+    label.x = DESIGN_W / 2;
+    label.y = DESIGN_H / 2;
+    app.stage.addChild(label);
+
+    // Pulse animation
+    app.ticker.add((delta) => {
+      label.alpha = 0.6 + 0.4 * Math.sin(Date.now() / 500);
+    });
   </script>
 </body>
 </html>
