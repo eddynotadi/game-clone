@@ -1,36 +1,30 @@
-# Playbox Runner Clone
+# NEO-RUN — Cyberpunk Endless Runner
 
-A side-scrolling runner game — clone of the [Playbox runner playable ad](https://playbox.play.plbx.ai/playoff/runner).
+A single-file 2D endless runner built with PixiJS v7 as a playable ad creative.
 
-## How to Play
+**Live:** https://eddynotadi.github.io/game-clone
 
-- **Tap / Click** anywhere to jump
-- Avoid enemies and obstacles
-- Collect coins to boost your score
-- You have 3 lives — don't lose them all!
+## Approach
 
-## Tech Stack
+**Why Cyberpunk**
+Just watched Ready Player One recently and got a bit obsessed with the aesthetic. The reference game had a clean light theme so I thought why not flip it completely and go dark, neon, cyberpunk. Wanted to make something that felt different and a bit funky rather than just copying the vibe.
 
-- **PixiJS v7** — 2D WebGL renderer
-- **Single HTML file** — all assets base64-embedded, zero external dependencies
-- **Cyberpunk theme** — custom AI-generated art
+**Engine**
+Went with PixiJS v7, lightweight, great sprite sheet support, solid delta-time ticker. Wrote all game logic from scratch, no frameworks on top.
 
-## Features
+**Assets**
+Generated everything using NanoBanana Pro on Google AI Studio. Prompted for a hooded cyberpunk runner, street props, enemies, coins and background, iterated until it all felt visually consistent. For the billboard I wanted a neon ramen shop sign, used Craiyon's background remover to clean up the edges. The sprite sheet from NanoBanana had uneven frame sizes so I wrote a small Python script to normalize it into a proper grid before embedding.
 
-- Parallax scrolling background (4 layers)
-- Animated spritesheet characters
-- Collision detection with forgiving hitboxes
-- Coin collection with particle effects
-- Difficulty ramp over time
-- Mobile touch + desktop click support
-- 60 FPS performance target
+**Single File Packaging**
+PixiJS is inlined minified, every asset is base64 encoded as a JS variable and loaded through a custom async pipeline with a loading bar. Final size 2.61 MB, well under 5MB. No build tools, no npm, literally just one file.
 
-## Play It
+**What I added on top**
+Progressive speed ramp so it gets harder the longer you survive. Screen shake on hit and player blinks red after taking damage.
 
-[Live on GitHub Pages](https://eddynotadi.github.io/gameclone)
+**Note:** The CTA button currently restarts the game — deep link to the advertiser's app/store page is a placeholder pending final asset delivery.
 
-## Built With
+**Audio headache**
+Regular HTML Audio kept getting blocked by browser autoplay policy. Switched to Web Audio API, decode the MP3 into an audio buffer inside the first tap event and loop it from there. Annoying to figure out but works cleanly.
 
-- Claude Code — game logic
-- PixiJS v7 — rendering engine
-- AI-generated assets — cyberpunk character, background, enemies
+**Tools used**
+PixiJS v7, NanoBanana Pro (assets), Craiyon (bg removal), Python + PIL (sprite normalization), Claude AI (dev assistance, permitted by the assignment)
