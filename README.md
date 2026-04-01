@@ -21,10 +21,11 @@ PixiJS is inlined minified, every asset is base64 encoded as a JS variable and l
 **What I added on top**
 Progressive speed ramp so it gets harder the longer you survive. Screen shake on hit and player blinks red after taking damage.
 
-**Note:** The CTA button currently restarts the game — deep link to the advertiser's app/store page is a placeholder pending final asset delivery.
+**Audio**
+Regular HTML Audio kept getting blocked by browser autoplay policy. Switched to Web Audio API — decode the MP3 into an audio buffer on first user gesture and loop it from there. Used the same unlock pattern Howler.js uses internally: play a silent scratch buffer first to satisfy Chrome's "audio must flow" requirement, then start the real track in the callback.
 
-**Audio headache**
-Regular HTML Audio kept getting blocked by browser autoplay policy. Switched to Web Audio API, decode the MP3 into an audio buffer inside the first tap event and loop it from there. Annoying to figure out but works cleanly.
+**DSP / Ad Network Compatibility**
+The creative runs standalone in any modern browser via the GitHub Pages URL. It is not currently MRAID wrapped so in-app placements on mobile DSPs (AdMob, MoPub etc.) would need a lightweight MRAID adapter added. The CTA button is a placeholder — in production it would call `mraid.open(url)` or fire a `ClickTag` depending on the serving environment.
 
 **Tools used**
 PixiJS v7, NanoBanana Pro (assets), Craiyon (bg removal), Python + PIL (sprite normalization), Claude AI (dev assistance, permitted by the assignment)
