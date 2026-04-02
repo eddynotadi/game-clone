@@ -1636,15 +1636,17 @@ function applyLayout() {
   applyCameraZoom();
 }
 
-var ZOOM = 1.55;
+var ZOOM_PORTRAIT  = 1.55;
+var ZOOM_LANDSCAPE = 1.0;
 
 function applyCameraZoom() {
   // Pin the player's world position as the zoom anchor.
   // In PixiJS: setting pivot == position keeps that world point
   // fixed at the same screen coordinate regardless of scale.
+  var zoom = W > H ? ZOOM_LANDSCAPE : ZOOM_PORTRAIT;
   var pivotX = W * 0.18;
   var pivotY = GROUND_Y;
-  gameCamera.scale.set(ZOOM);
+  gameCamera.scale.set(zoom);
   gameCamera.pivot.set(pivotX, pivotY);
   gameCamera.position.set(pivotX, pivotY);
 }
@@ -1782,7 +1784,7 @@ app.ticker.add(function(dt) {
   if (window._watchFirstEnemy && enemies.length > 0) {
     var fe = enemies[0];
     var playerX = playerSprite.x;
-    if (fe.sprite.x - playerX < W * 0.27) {
+    if (fe.sprite.x - playerX < Math.min(W, H) * 0.27) {
       window._watchFirstEnemy = false;
       gameState = 'paused';
       showInstruction();
