@@ -1290,10 +1290,10 @@ var A_PAYPAL="data:image/webp;base64,UklGRgBdAABXRUJQVlA4WAoAAAAwAAAAJwMAJgIASUN
 </script>
 <script>
 
-const W = window.innerWidth;
-const H = window.innerHeight;
-const GROUND_Y = H * 0.73;
-const CTA_H = 80;
+var W = window.innerWidth;
+var H = window.innerHeight;
+var GROUND_Y = H * 0.73;
+var CTA_H = 80;
 
 // Load image via canvas to avoid CORS on file://
 function loadTex(src) {
@@ -1370,7 +1370,9 @@ var fxLayer = new PIXI.Container();
 var hudLayer = new PIXI.Container();
 var overlayLayer = new PIXI.Container();
 var coinLayer = new PIXI.Container();
-app.stage.addChild(bgLayer, propLayer, gameLayer, coinLayer, fxLayer, hudLayer, overlayLayer);
+var gameCamera = new PIXI.Container();
+gameCamera.addChild(bgLayer, propLayer, gameLayer, coinLayer, fxLayer);
+app.stage.addChild(gameCamera, hudLayer, overlayLayer);
 
 function makeFrames(baseTex, cols, rows, fw, fh, positions) {
   var bt = baseTex.baseTexture;
@@ -1407,6 +1409,11 @@ async function loadAll() {
   frames.coin  = makeFrames(tex.COIN,  7, 1,  60, 120, [[0,0],[1,0],[2,0],[3,0],[4,0],[5,0]]);
 
   buildGame();
+  var _resizeTimer = null;
+  window.addEventListener('resize', function() {
+    clearTimeout(_resizeTimer);
+    _resizeTimer = setTimeout(applyLayout, 50);
+  });
   gameState = 'ready';
   if (document.getElementById('loading-bar')) document.getElementById('loading-bar').style.width = '100%';
   if (document.getElementById('loading-pct')) document.getElementById('loading-pct').textContent = 'Ready!';
@@ -1425,28 +1432,20 @@ var props = [];
 var hearts = [];
 var scoreTxt, tutHand, tutText, tutSub;
 var failBadge, goOverlay, retryTxt, goScore;
+var groundGfx;    // PIXI.Graphics — needs clear+redraw on resize
+var ctaSprite;    // CTA sprite — needs width/y update
+var btnGraphics;  // button Graphics — needs clear+redraw
+var dlText;       // DOWNLOAD Text — needs x/y + fontSize update
 
 function buildGame() {
   for (var i = 0; i < 3; i++) {
     var bg = new PIXI.Sprite(tex.BG);
-    bg.width = W * 1.5;
-    bg.height = H - CTA_H;
-    bg.x = i * W * 1.5;
     bgLayer.addChild(bg);
     bgSprites.push(bg);
   }
 
-  var gnd = new PIXI.Graphics();
-  gnd.beginFill(0x12122e);
-  gnd.drawRect(0, GROUND_Y + 3, W, H);
-  gnd.endFill();
-  gnd.lineStyle(3, 0x00ffcc, 0.8);
-  gnd.moveTo(0, GROUND_Y + 3);
-  gnd.lineTo(W, GROUND_Y + 3);
-  gnd.lineStyle(1, 0x00ffcc, 0.15);
-  gnd.moveTo(0, GROUND_Y + 22);
-  gnd.lineTo(W, GROUND_Y + 22);
-  gameLayer.addChild(gnd);
+  groundGfx = new PIXI.Graphics();
+  gameLayer.addChild(groundGfx);
 
   addProp(W + 80);
   addProp(W + 80 + 720);
@@ -1456,10 +1455,8 @@ function buildGame() {
   playerSprite.gotoAndStop(0); // single pose, no jitter
   playerSprite.anchor.set(0.5, 1);
   playerSprite.scale.set(0.19);
-  playerSprite.x = W * 0.18;
-  playerSprite.y = GROUND_Y + 13;
   gameLayer.addChild(playerSprite);
-  player = { vy: 0, grounded: true, jumping: false, baseY: GROUND_Y + 13, state: 'idle' };
+  player = { vy: 0, grounded: true, jumping: false, baseY: 0, state: 'idle' };
 
   for (var i = 0; i < 3; i++) {
     var hg = new PIXI.Graphics();
@@ -1483,52 +1480,40 @@ function buildGame() {
   tutHand = new PIXI.Sprite(tex.HAND);
   tutHand.anchor.set(0.5);
   tutHand.scale.set(0.065);
-  tutHand.x = W * 0.5; tutHand.y = GROUND_Y - 20;
   hudLayer.addChild(tutHand);
 
   tutText = new PIXI.Text('', {fontFamily:'Arial',fontSize:1}); tutText.visible=false; hudLayer.addChild(tutText);
   tutSub  = new PIXI.Text('', {fontFamily:'Arial',fontSize:1}); tutSub.visible=false;  hudLayer.addChild(tutSub);
 
-  var cta = new PIXI.Sprite(tex.CTA);
-  cta.width = W; cta.height = CTA_H;
-  cta.x = 0; cta.y = H - CTA_H;
-  hudLayer.addChild(cta);
-  var btnW = Math.min(130, W * 0.35);
-  var btnH = Math.round(CTA_H * 0.48);
-  var btnX = W - btnW - 12;
-  var btnY = H - CTA_H + Math.round((CTA_H - btnH) / 2);
-  var btnG = new PIXI.Graphics();
-  btnG.beginFill(0xff9900);
-  btnG.drawRoundedRect(btnX, btnY, btnW, btnH, 6);
-  btnG.endFill();
-  hudLayer.addChild(btnG);
-  var dlT = new PIXI.Text('DOWNLOAD', {fontFamily:'Arial',fontSize:Math.max(11, Math.round(btnH * 0.42)),fontWeight:'bold',fill:0xffffff});
-  dlT.anchor.set(0.5); dlT.x = btnX + btnW/2; dlT.y = btnY + btnH/2;
-  hudLayer.addChild(dlT);
+  ctaSprite = new PIXI.Sprite(tex.CTA);
+  hudLayer.addChild(ctaSprite);
+  btnGraphics = new PIXI.Graphics();
+  hudLayer.addChild(btnGraphics);
+  dlText = new PIXI.Text('DOWNLOAD', {fontFamily:'Arial',fontSize:12,fontWeight:'bold',fill:0xffffff});
+  dlText.anchor.set(0.5);
+  hudLayer.addChild(dlText);
 
   goOverlay = new PIXI.Graphics();
-  goOverlay.beginFill(0x000000, 0.75);
-  goOverlay.drawRect(0, 0, W, H);
-  goOverlay.endFill();
   goOverlay.visible = false;
   overlayLayer.addChild(goOverlay);
 
   failBadge = new PIXI.Sprite(tex.FAIL);
   failBadge.anchor.set(0.5);
-  failBadge.x = W / 2; failBadge.y = H * 0.32;
   failBadge.width = 140; failBadge.height = 140;
   failBadge.visible = false;
   overlayLayer.addChild(failBadge);
 
   goScore = new PIXI.Text('SCORE: $0', {fontFamily:'Arial',fontSize:26,fontWeight:'bold',fill:0x00ffcc,stroke:0x000000,strokeThickness:3});
-  goScore.anchor.set(0.5); goScore.x = W / 2; goScore.y = H * 0.47;
+  goScore.anchor.set(0.5);
   goScore.visible = false;
   overlayLayer.addChild(goScore);
 
   retryTxt = new PIXI.Text('TAP TO RETRY', {fontFamily:'Arial',fontSize:20,fontWeight:'bold',fill:0xffffff,stroke:0x000000,strokeThickness:3});
-  retryTxt.anchor.set(0.5); retryTxt.x = W / 2; retryTxt.y = H * 0.55;
+  retryTxt.anchor.set(0.5);
   retryTxt.visible = false;
   overlayLayer.addChild(retryTxt);
+
+  applyLayout();
 }
 
 function addProp(x) {
@@ -1561,6 +1546,107 @@ function addProp(x) {
   grp.addChild(board);
   propLayer.addChild(grp);
   props.push(grp);
+}
+
+function _repositionProp(grp) {
+  var post  = grp.children[0]; // PROP2 sprite
+  var glow  = grp.children[1]; // Graphics backlight
+  var board = grp.children[2]; // PROP1 sprite
+  if (!post || !board) return;
+
+  post.y = GROUND_Y + 3;
+
+  var postH = tex.PROP2.height * 0.5;
+  board.y = GROUND_Y + 3 - postH + 69;
+
+  var bw = tex.PROP1.width * 0.42;
+  var bh = tex.PROP1.height * 0.42;
+  var gw = bw * 0.7, gh = bh * 0.7;
+  glow.clear();
+  glow.beginFill(0x00eeff, 0.5);
+  glow.drawRoundedRect(-gw / 2, board.y - bh * 0.5 - gh / 2, gw, gh, 8);
+  glow.endFill();
+  glow.filters = [new PIXI.BlurFilter(4)];
+}
+
+function applyLayout() {
+  W = window.innerWidth;
+  H = window.innerHeight;
+  GROUND_Y = H * 0.73;
+  app.renderer.resize(W, H);
+
+  // bgSprites — size and reset scroll positions
+  for (var i = 0; i < bgSprites.length; i++) {
+    bgSprites[i].width  = W * 1.5;
+    bgSprites[i].height = H - CTA_H;
+    bgSprites[i].x      = i * W * 1.5;
+  }
+
+  // groundGfx — clear + redraw
+  groundGfx.clear();
+  groundGfx.beginFill(0x12122e);
+  groundGfx.drawRect(0, GROUND_Y + 3, W, H);
+  groundGfx.endFill();
+  groundGfx.lineStyle(3, 0x00ffcc, 0.8);
+  groundGfx.moveTo(0, GROUND_Y + 3); groundGfx.lineTo(W, GROUND_Y + 3);
+  groundGfx.lineStyle(1, 0x00ffcc, 0.15);
+  groundGfx.moveTo(0, GROUND_Y + 22); groundGfx.lineTo(W, GROUND_Y + 22);
+
+  // player position and landing target
+  if (playerSprite) { playerSprite.x = W * 0.18; playerSprite.y = GROUND_Y + 13; }
+  if (player)       { player.baseY = GROUND_Y + 13; }
+
+  // tutorial hand
+  if (tutHand) { tutHand.x = W * 0.5; tutHand.y = GROUND_Y - 20; }
+
+  // CTA sprite
+  if (ctaSprite) { ctaSprite.width = W; ctaSprite.height = CTA_H; ctaSprite.x = 0; ctaSprite.y = H - CTA_H; }
+
+  // button Graphics + dlText — clear + redraw
+  if (btnGraphics && dlText) {
+    var bW = Math.min(130, W * 0.35);
+    var bH = Math.round(CTA_H * 0.48);
+    var bX = W - bW - 12;
+    var bY = H - CTA_H + Math.round((CTA_H - bH) / 2);
+    btnGraphics.clear();
+    btnGraphics.beginFill(0xff9900);
+    btnGraphics.drawRoundedRect(bX, bY, bW, bH, 6);
+    btnGraphics.endFill();
+    dlText.style.fontSize = Math.max(11, Math.round(bH * 0.42));
+    dlText.x = bX + bW / 2; dlText.y = bY + bH / 2;
+  }
+
+  // goOverlay — clear + redraw full-screen rect
+  if (goOverlay) {
+    goOverlay.clear();
+    goOverlay.beginFill(0x000000, 0.75);
+    goOverlay.drawRect(0, 0, W, H);
+    goOverlay.endFill();
+  }
+
+  // overlay elements
+  if (failBadge) { failBadge.x = W / 2; failBadge.y = H * 0.32; }
+  if (goScore)   { goScore.x   = W / 2; goScore.y   = H * 0.47; }
+  if (retryTxt)  { retryTxt.x  = W / 2; retryTxt.y  = H * 0.55; }
+
+  // reposition any live props to the new GROUND_Y
+  for (var i = 0; i < props.length; i++) { _repositionProp(props[i]); }
+
+  // apply zoom last (reads updated W/H/GROUND_Y)
+  applyCameraZoom();
+}
+
+var ZOOM = 1.55;
+
+function applyCameraZoom() {
+  // Pin the player's world position as the zoom anchor.
+  // In PixiJS: setting pivot == position keeps that world point
+  // fixed at the same screen coordinate regardless of scale.
+  var pivotX = W * 0.18;
+  var pivotY = GROUND_Y;
+  gameCamera.scale.set(ZOOM);
+  gameCamera.pivot.set(pivotX, pivotY);
+  gameCamera.position.set(pivotX, pivotY);
 }
 
 function onTap(e) {
